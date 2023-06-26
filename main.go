@@ -71,7 +71,6 @@ type Model struct {
 	data    map[string]interface{}
 	currMap map[string]string
 	cursor  Cursor
-	expand  map[string]struct{}
 	isLeaf  bool
 }
 
@@ -90,7 +89,6 @@ func NewModel() *Model {
 		data:    data,
 		currMap: getInitialMap(data),
 		cursor:  c,
-		expand:  make(map[string]struct{}),
 		isLeaf:  false,
 	}
 }
@@ -150,33 +148,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isLeaf = false
 			}
 		case "right":
-			// right goes down the JSON tree
+			// right moves cursor from key to value
 			// the key at the cursor is selected
 			m.cursor.currSel = m.cursor.currKeys[m.cursor.currIndex]
-			m.cursor.selKeys = append(m.cursor.selKeys, m.cursor.currKeys[m.cursor.currIndex])
 			// check if the value of the key is another map
 			if val := m.currMap[m.cursor.currSel]; val != "{}" {
 				// we are at the bottom of the tree
 				m.isLeaf = true
 			}
 		case "left":
-			// left goes up the JSON tree
-			if len(m.cursor.selKeys) > 0 {
-				// remove previously selected key
-				m.cursor.selKeys = m.cursor.selKeys[:len(m.cursor.selKeys)-1]
-				// we will no longer be at a leaf
-				if m.isLeaf == true {
-					m.isLeaf = false
-				}
+			// left moves cursor from value to key
+			// we will no longer be at a leaf
+			if m.isLeaf == true {
+				m.isLeaf = false
 			}
 			m.cursor.currSel = ""
+
 		case "enter":
-			// expand the map
-			if _, ok := m.expand[m.cursor.currSel]; ok {
-				// already expanded
-				delete(m.expand, m.cursor.currSel)
-			} else {
-				// update the map
+			// if we are not at a leaf and there is a selection
+			if m.isLeaf == false && m.cursor.currSel != "" {
+				// update the current map to the one at the last selected key
+				m.cursor.selKeys = append(m.cursor.selKeys, m.cursor.currSel)
 				m.updateCurrentMap()
 				// reset the current keys
 				m.cursor.currKeys = []string{}
@@ -185,8 +177,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// reset the current key index
 				m.cursor.currIndex = 0
-				// the value of this key is expanded
-				m.expand[m.cursor.selKeys[len(m.cursor.selKeys)-1]] = struct{}{}
+				// reset the current selected key
+				m.cursor.currSel = ""
 			}
 		}
 	}
@@ -195,7 +187,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) View() string {
 	s := ""
-	s += fmt.Sprintln(m.cursor.currSel)
 	if len(m.cursor.selKeys) > 0 {
 		for _, sel := range m.cursor.selKeys {
 			s += fmt.Sprintf("%s:", sel)
@@ -210,7 +201,7 @@ func (m *Model) View() string {
 				cursor = "<"
 			}
 		}
-		if len(m.cursor.selKeys) > 0 && m.cursor.currKeys[m.cursor.currIndex] == m.cursor.selKeys[len(m.cursor.selKeys)-1] {
+		if m.cursor.currSel != "" {
 			s += fmt.Sprintf("%s: %s %s\n", key, cursor, m.currMap[key])
 		} else {
 			s += fmt.Sprintf("%s %s: %s\n", cursor, key, m.currMap[key])
