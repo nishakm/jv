@@ -131,22 +131,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor.currIndex > 0 {
 				m.cursor.currIndex--
 			}
-			// change current selection to the one the cursor is pointing to
-			if len(m.cursor.selKeys) > 0 && m.cursor.currSel == m.cursor.selKeys[len(m.cursor.selKeys)-1] {
-				m.cursor.selKeys = m.cursor.selKeys[:len(m.cursor.selKeys)-1]
-				m.cursor.currSel = ""
-				m.isLeaf = false
-			}
+			// don't select anything when moving up or down
+			m.cursor.currSel = ""
+			m.isLeaf = false
 		case "down":
 			if m.cursor.currIndex < len(m.cursor.currKeys)-1 {
 				m.cursor.currIndex++
 			}
-			// change current selection to the one the cursor is pointing to
-			if len(m.cursor.selKeys) > 0 && m.cursor.currSel == m.cursor.selKeys[len(m.cursor.selKeys)-1] {
-				m.cursor.selKeys = m.cursor.selKeys[:len(m.cursor.selKeys)-1]
-				m.cursor.currSel = ""
-				m.isLeaf = false
-			}
+			m.cursor.currSel = ""
+			m.isLeaf = false
 		case "right":
 			// right moves cursor from key to value
 			// the key at the cursor is selected
@@ -196,10 +189,7 @@ func (m *Model) View() string {
 	for index, key := range m.cursor.currKeys {
 		cursor := " "
 		if m.cursor.currIndex == index {
-			cursor = ">"
-			if m.isLeaf {
-				cursor = "<"
-			}
+			cursor = "→"
 		}
 		if m.cursor.currSel != "" {
 			s += fmt.Sprintf("%s: %s %s\n", key, cursor, m.currMap[key])
