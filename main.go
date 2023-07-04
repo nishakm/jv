@@ -96,18 +96,27 @@ func NewModel() *Model {
 // updateCurrentMap updates the current map depending on what keys are
 // selected
 func (m *Model) updateCurrentMap() {
-	// something needs to be selected
-	// and the value of the last selected must be a map
-	if len(m.cursor.selKeys) > 0 && !m.isLeaf {
-		// get the first map
-		tempMap, _ := m.data[m.cursor.selKeys[0]].(map[string]interface{})
-		// iterate over the selected keys
-		for i := 1; i < len(m.cursor.selKeys)-1; i++ {
-			tempMap, _ = tempMap[m.cursor.selKeys[i]].(map[string]interface{})
+	// reset the current map
+	m.currMap = make(map[string]string)
+	if len(m.cursor.selKeys) > 0 {
+		if !m.isLeaf {
+			// get the first map
+			tempMap, _ := m.data[m.cursor.selKeys[0]].(map[string]interface{})
+			// iterate over the selected keys
+			for i := 1; i < len(m.cursor.selKeys)-1; i++ {
+				tempMap, _ = tempMap[m.cursor.selKeys[i]].(map[string]interface{})
+			}
+			for key, val := range tempMap {
+				if valstr, ok := val.(string); ok {
+					m.currMap[key] = valstr
+				} else {
+					m.currMap[key] = "{}" // I'll accomodate lists later
+				}
+			}
 		}
-		// reset the current map
-		m.currMap = make(map[string]string)
-		for key, val := range tempMap {
+	} else {
+		// fill in the initial map
+		for key, val := range m.data {
 			if valstr, ok := val.(string); ok {
 				m.currMap[key] = valstr
 			} else {
@@ -173,6 +182,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// reset the current selected key
 				m.cursor.currSel = ""
 			}
+		case "x":
+			// remove the last selected key and update the current map
+			if len(m.cursor.selKeys) > 0 {
+				m.cursor.selKeys = m.cursor.selKeys[:len(m.cursor.selKeys)-1]
+			}
+			m.updateCurrentMap()
+			// reset the current keys
+			m.cursor.currKeys = []string{}
+			for key, _ := range m.currMap {
+				m.cursor.currKeys = append(m.cursor.currKeys, key)
+			}
+			// reset the current key index
+			m.cursor.currIndex = 0
+			// reset the current selected key
+			m.cursor.currSel = ""
 		}
 	}
 	return m, nil
@@ -197,6 +221,6 @@ func (m *Model) View() string {
 			s += fmt.Sprintf("%s %s: %s\n", cursor, key, m.currMap[key])
 		}
 	}
-	s += "\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: → \n"
+	s += "\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
 	return s
 }
