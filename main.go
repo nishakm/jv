@@ -222,11 +222,15 @@ func (m *Model) View() string {
 		}
 	}
 	s += fmt.Sprintf("\n\n")
-	for _, kv := range m.CurrKV {
-		if m.CurrC.IsKey {
-			s += fmt.Sprintf("%s %s: %s\n", m.CurrC.CursorDisplay, kv.Key, kv.Value)
+	for index, kv := range m.CurrKV {
+		if m.CurrC.RowNo == index {
+			if m.CurrC.IsKey {
+				s += fmt.Sprintf("%s %s: %s\n", m.CurrC.CursorDisplay, kv.Key, kv.Value)
+			} else {
+				s += fmt.Sprintf("%s: %s %s\n", kv.Key, m.CurrC.CursorDisplay, kv.Value)
+			}
 		} else {
-			s += fmt.Sprintf("%s: %s %s\n", kv.Key, m.CurrC.CursorDisplay, kv.Value)
+			s += fmt.Sprintf("%s: %s\n", kv.Key, kv.Value)
 		}
 	}
 	s += "\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
