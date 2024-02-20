@@ -18,10 +18,35 @@ func main() {
 	}
 }
 
+// KVPair stores a key and value used in a map
+type KVPair struct {
+	Key             string
+	Value           string
+	KeyValueDisplay string // this gets displayed to the console
+}
+
+// Cursor contains the cursor's horizontal and vertical position
+type Cursor struct {
+	RowNo         int    // used to move the cursor up and down
+	IsKey         bool   // used to indicate if the cursor is pointing to a key or value
+	IsEnd         bool   // used to indicate if we have come to the end of a path
+	CursorDisplay string // this gets displayed to the console
+}
+
+// Model contains the data and its visual representation
+type Model struct {
+	Data   map[string]any // contains the parsed JSON data
+	CurrC  Cursor         // the cursor position
+	CurrKV []KVPair       // current list of key-value pairs
+	Path   []string       // current path location
+}
+
 // readJsonStdin is a utility function that reads JSON from stdin
-// and returns a map of keys as strings and values as interface{}
-func readJsonStdin() (map[string]interface{}, error) {
-	var data map[string]interface{}
+// and returns a map of keys as strings and values as any
+// TODO: this assumes we are always reading a json object with
+// key-value pairs. Make it work for an array.
+func readJsonStdin() (map[string]any, error) {
+	var data map[string]any
 	content, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read JSON input: %w", err)
@@ -33,192 +58,175 @@ func readJsonStdin() (map[string]interface{}, error) {
 	return data, nil
 }
 
-// getInitialMap gets the first list of key-value pairs in the JSON
-func getInitialMap(data map[string]interface{}) map[string]string {
-	startMap := make(map[string]string)
-	for key, val := range data {
-		if valstr, ok := val.(string); ok {
-			startMap[key] = valstr
-		} else {
-			startMap[key] = "{}" // I'll accomodate lists later
-		}
-	}
-	return startMap
-}
-
-// getInitialKeys gets the first list of keys in the JSON
-func getInitialKeys(data map[string]interface{}) []string {
-	keys := []string{}
-	for key, _ := range data {
-		keys = append(keys, key)
-	}
-	return keys
-}
-
-// Cursor contains the cursor's horizontal and vertical position
-type Cursor struct {
-	selKeys   []string // keys selected
-	currSel   string   // current key selection
-	currKeys  []string // current keys in current map
-	currIndex int      // current index of current keys
-}
-
-// Model contains the data and its visual representation
-// data holds the actual parsed data
-// cursorVertical holds the position of the cursor on the current list
-// cursorHorizontal holds the position of the cursor at the current JSON object
-type Model struct {
-	data    map[string]interface{}
-	currMap map[string]string
-	cursor  Cursor
-	isLeaf  bool
-}
-
-// NewModel creates a new Model struct with initial settings
+// NewModel gets the initial model
 func NewModel() *Model {
 	// we will read the JSON from Stdin
 	data, err := readJsonStdin()
 	if err != nil {
 		return nil
 	}
+	kvpairs := []KVPair{}
+	for key, val := range data {
+		kvp := KVPair{Key: key}
+		if valstr, ok := val.(string); ok {
+			kvp.Value = valstr
+		} else if _, ok := val.([]any); ok {
+			kvp.Value = "[]"
+		} else {
+			kvp.Value = "{}"
+		}
+		kvpairs = append(kvpairs, kvp)
+	}
+	// if there are no key-value pairs there is nothing to do
+	if len(kvpairs) == 0 {
+		return nil
+	}
 	c := Cursor{
-		currKeys: getInitialKeys(data),
-		currSel:  "",
+		RowNo:         0,     // first row is always 0
+		IsKey:         true,  // first thing the cursor points to is a key
+		IsEnd:         false, // this is the very start of the path
+		CursorDisplay: "→",   // we go right
 	}
 	return &Model{
-		data:    data,
-		currMap: getInitialMap(data),
-		cursor:  c,
-		isLeaf:  false,
+		Data:   data,
+		CurrC:  c,
+		CurrKV: kvpairs,
+		Path:   []string{},
 	}
 }
 
-// updateCurrentMap updates the current map depending on what keys are
-// selected
-func (m *Model) updateCurrentMap() {
-	// reset the current map
-	m.currMap = make(map[string]string)
-	if len(m.cursor.selKeys) > 0 {
-		if !m.isLeaf {
-			// get the first map
-			tempMap, _ := m.data[m.cursor.selKeys[0]].(map[string]interface{})
-			// iterate over the selected keys
-			for i := 1; i < len(m.cursor.selKeys)-1; i++ {
-				tempMap, _ = tempMap[m.cursor.selKeys[i]].(map[string]interface{})
-			}
-			for key, val := range tempMap {
-				if valstr, ok := val.(string); ok {
-					m.currMap[key] = valstr
-				} else {
-					m.currMap[key] = "{}" // I'll accomodate lists later
-				}
-			}
-		}
-	} else {
-		// fill in the initial map
-		for key, val := range m.data {
-			if valstr, ok := val.(string); ok {
-				m.currMap[key] = valstr
-			} else {
-				m.currMap[key] = "{}" // I'll accomodate lists later
-			}
-		}
-	}
-}
-
+// TODO: ask for a path to a file if no stdin data
 func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+// Update updates the model based on tea.KeyMsg
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		// cursor moving up and down changes the RowNo
+		// this action means we are moving through keys
 		case "up":
-			if m.cursor.currIndex > 0 {
-				m.cursor.currIndex--
+			if m.CurrC.RowNo > 0 {
+				m.CurrC.RowNo--
 			}
-			// don't select anything when moving up or down
-			m.cursor.currSel = ""
-			m.isLeaf = false
+			m.CurrC.IsKey = true
+			m.CurrC.IsEnd = false
+			m.CurrC.CursorDisplay = "→"
 		case "down":
-			if m.cursor.currIndex < len(m.cursor.currKeys)-1 {
-				m.cursor.currIndex++
+			if m.CurrC.RowNo < len(m.CurrKV)-1 {
+				m.CurrC.RowNo++
 			}
-			m.cursor.currSel = ""
-			m.isLeaf = false
+			m.CurrC.IsKey = true
+			m.CurrC.IsEnd = false
+			m.CurrC.CursorDisplay = "→"
+		// left and right keys moves the cursor from key to value
+		// if the cursor is at the end of a path it can only go left
 		case "right":
-			// right moves cursor from key to value
-			// the key at the cursor is selected
-			m.cursor.currSel = m.cursor.currKeys[m.cursor.currIndex]
-			// check if the value of the key is another map
-			if val := m.currMap[m.cursor.currSel]; val != "{}" {
-				// we are at the bottom of the tree
-				m.isLeaf = true
+			if m.CurrC.IsKey {
+				// always pointing at a value
+				m.CurrC.IsKey = false
+				// Check if this is an end value
+				if m.CurrKV[m.CurrC.RowNo].Value != "{}" && m.CurrKV[m.CurrC.RowNo].Value != "[]" {
+					m.CurrC.IsEnd = true
+					// update CursorDisplay
+					m.CurrC.CursorDisplay = "←"
+				} else {
+					m.CurrC.IsEnd = false
+					m.CurrC.CursorDisplay = "→"
+				}
 			}
 		case "left":
-			// left moves cursor from value to key
-			// we will no longer be at a leaf
-			if m.isLeaf == true {
-				m.isLeaf = false
-			}
-			m.cursor.currSel = ""
+			// always pointing at a key
+			m.CurrC.IsKey = true
+			// no longer at the end
+			m.CurrC.IsEnd = false
+			m.CurrC.CursorDisplay = "→"
 
+		// enter expands a {} or [] value which turns into a new list of key-value pairs
+		// enter does nothing if it is at a key or if it is at a value that cannot expand
 		case "enter":
-			// if we are not at a leaf and there is a selection
-			if m.isLeaf == false && m.cursor.currSel != "" {
-				// update the current map to the one at the last selected key
-				m.cursor.selKeys = append(m.cursor.selKeys, m.cursor.currSel)
-				m.updateCurrentMap()
-				// reset the current keys
-				m.cursor.currKeys = []string{}
-				for key, _ := range m.currMap {
-					m.cursor.currKeys = append(m.cursor.currKeys, key)
-				}
-				// reset the current key index
-				m.cursor.currIndex = 0
-				// reset the current selected key
-				m.cursor.currSel = ""
+			if !m.CurrC.IsKey && !m.CurrC.IsEnd {
+				// append the current Key to the Path
+				m.Path = append(m.Path, m.CurrC[m.CurrC.RowNo].Key)
+				// update the model
+				m.CurrC.IsKey = true
+				m.CurrC.RowNo = 0
+				m.CurrC.IsEnd = false
+				m.CursorDisplay = "→"
+				m.updateKV()
 			}
+		// x goes back one key and reloads the previous key-value pairs
 		case "x":
 			// remove the last selected key and update the current map
-			if len(m.cursor.selKeys) > 0 {
-				m.cursor.selKeys = m.cursor.selKeys[:len(m.cursor.selKeys)-1]
+			if len(m.Path) > 0 {
+				m.Path = m.Path[:len(m.Path)-1]
 			}
-			m.updateCurrentMap()
-			// reset the current keys
-			m.cursor.currKeys = []string{}
-			for key, _ := range m.currMap {
-				m.cursor.currKeys = append(m.cursor.currKeys, key)
-			}
-			// reset the current key index
-			m.cursor.currIndex = 0
-			// reset the current selected key
-			m.cursor.currSel = ""
+			// update the model
+			m.CurrC.IsKey = true
+			m.CurrC.RowNo = 0
+			m.CurrC.IsEnd = false
+			m.CursorDisplay = "→"
+			m.updateKV()
 		}
 	}
 	return m, nil
 }
 
+// updateKV updates the model's list of key-value pairs
+func (m *Model) updateKV() {
+	// remove everything from the current key-value pair list
+	clear(m.CurrKV)
+	// if there is nothing in the path just fill the first set of key-value pairs
+	if len(m.Path) == 0 {
+		for key, val := range m.Data {
+			kvp := KVPair{Key: key}
+			if valstr, ok := val.(string); ok {
+				kvp.Value = valstr
+			} else if _, ok := val.([]any); ok {
+				kvp.Value = "[]"
+			} else {
+				kvp.Value = "{}"
+			}
+			m.CurrKV = append(m.CurrKV, kvp)
+		}
+	} else {
+		// iterate through the Path to get the final key-pair
+		tempMap, _ := m.data[m.Path[0]].(map[string]any)
+		for i := 1; i < len(m.Path)-1; i++ {
+			tempMap, _ = tempMap[m.Path[i]].(map[string]any)
+
+		}
+		for key, val := range tempMap {
+			kvp := KVPair{Key: key}
+			if valstr, ok := val.(string); ok {
+				kvp.Value = valstr
+			} else if _, ok := val.([]any); ok {
+				kvp.Value = "[]"
+			} else {
+				kvp.Value = "{}"
+			}
+			m.CurrKV = append(m.CurrKV, kvp)
+		}
+	}
+}
+
 func (m *Model) View() string {
-	s := ""
-	if len(m.cursor.selKeys) > 0 {
-		for _, sel := range m.cursor.selKeys {
-			s += fmt.Sprintf("%s:", sel)
+	s := "You are here: "
+	if len(m.Path) > 0 {
+		for _, p := range m.Path {
+			s += fmt.Sprintf("%s: ", p)
 		}
 		s += fmt.Sprintf("\n\n")
 	}
-	for index, key := range m.cursor.currKeys {
-		cursor := " "
-		if m.cursor.currIndex == index {
-			cursor = "→"
-		}
-		if m.cursor.currSel != "" {
-			s += fmt.Sprintf("%s: %s %s\n", key, cursor, m.currMap[key])
+	for index, kv := range m.CurrKV {
+		if m.CurrC.IsKey {
+			s += fmt.Sprintf("%s %s: %s\n", m.CurrC.CursorDisplay, kv.Key, kv.Value)
 		} else {
-			s += fmt.Sprintf("%s %s: %s\n", cursor, key, m.currMap[key])
+			s += fmt.Sprintf("%s: %s %s\n", kv.Key, m.CurrC.CursorDisplay, kv.Value)
 		}
 	}
 	s += "\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
