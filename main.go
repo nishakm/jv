@@ -151,12 +151,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if !m.CurrC.IsKey && !m.CurrC.IsEnd {
 				// append the current Key to the Path
-				m.Path = append(m.Path, m.CurrC[m.CurrC.RowNo].Key)
+				m.Path = append(m.Path, m.CurrKV[m.CurrC.RowNo].Key)
 				// update the model
 				m.CurrC.IsKey = true
 				m.CurrC.RowNo = 0
 				m.CurrC.IsEnd = false
-				m.CursorDisplay = "→"
+				m.CurrC.CursorDisplay = "→"
 				m.updateKV()
 			}
 		// x goes back one key and reloads the previous key-value pairs
@@ -169,7 +169,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.CurrC.IsKey = true
 			m.CurrC.RowNo = 0
 			m.CurrC.IsEnd = false
-			m.CursorDisplay = "→"
+			m.CurrC.CursorDisplay = "→"
 			m.updateKV()
 		}
 	}
@@ -179,7 +179,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // updateKV updates the model's list of key-value pairs
 func (m *Model) updateKV() {
 	// remove everything from the current key-value pair list
-	clear(m.CurrKV)
+	m.CurrKV = nil
 	// if there is nothing in the path just fill the first set of key-value pairs
 	if len(m.Path) == 0 {
 		for key, val := range m.Data {
@@ -195,7 +195,7 @@ func (m *Model) updateKV() {
 		}
 	} else {
 		// iterate through the Path to get the final key-pair
-		tempMap, _ := m.data[m.Path[0]].(map[string]any)
+		tempMap, _ := m.Data[m.Path[0]].(map[string]any)
 		for i := 1; i < len(m.Path)-1; i++ {
 			tempMap, _ = tempMap[m.Path[i]].(map[string]any)
 
@@ -220,9 +220,9 @@ func (m *Model) View() string {
 		for _, p := range m.Path {
 			s += fmt.Sprintf("%s: ", p)
 		}
-		s += fmt.Sprintf("\n\n")
 	}
-	for index, kv := range m.CurrKV {
+	s += fmt.Sprintf("\n\n")
+	for _, kv := range m.CurrKV {
 		if m.CurrC.IsKey {
 			s += fmt.Sprintf("%s %s: %s\n", m.CurrC.CursorDisplay, kv.Key, kv.Value)
 		} else {
