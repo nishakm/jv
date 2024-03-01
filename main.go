@@ -20,9 +20,8 @@ func main() {
 
 // KVPair stores a key and value used in a map
 type KVPair struct {
-	Key             string
-	Value           string
-	KeyValueDisplay string // this gets displayed to the console
+	Key   string
+	Value string
 }
 
 // Cursor contains the cursor's horizontal and vertical position
@@ -35,18 +34,16 @@ type Cursor struct {
 
 // Model contains the data and its visual representation
 type Model struct {
-	Data   map[string]any // contains the parsed JSON data
-	CurrC  Cursor         // the cursor position
-	CurrKV []KVPair       // current list of key-value pairs
-	Path   []string       // current path location
+	Data   any      // contains the parsed JSON data
+	CurrC  Cursor   // the cursor position
+	CurrKV []KVPair // current list of key-value pairs
+	Path   []string // current path location
 }
 
 // readJsonStdin is a utility function that reads JSON from stdin
-// and returns a map of keys as strings and values as any
-// TODO: this assumes we are always reading a json object with
-// key-value pairs. Make it work for an array.
-func readJsonStdin() (map[string]any, error) {
-	var data map[string]any
+// and returns an any
+func readJsonStdin() (any, error) {
+	var data any
 	content, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read JSON input: %w", err)
@@ -58,6 +55,61 @@ func readJsonStdin() (map[string]any, error) {
 	return data, nil
 }
 
+// getKAny is a utility function that type casts an any
+// and returns a map of string and any
+// if the input is neither one of these we will return nil
+func getKAny(o any) map[string]any {
+	if val, ok := o.(map[string]any); ok {
+		return val
+	}
+	if val, ok := o.([]any); ok {
+		arr := make(map[string]any)
+		for i, v := range val {
+			arr[fmt.Sprintf("%d", i)] = v
+		}
+		return arr
+	}
+	return nil
+}
+
+// getVal is a utility function that takes any and returns
+// an appropriate string value for it
+func getVal(o any) string {
+	if valstr, ok := o.(string); ok {
+		return valstr
+	}
+	if valint, ok := o.(int); ok {
+		return fmt.Sprintf("%d", valint)
+	}
+	if valflt, ok := o.(float64); ok {
+		return fmt.Sprintf("%f", valflt)
+	}
+	if _, ok := o.(map[string]any); ok {
+		return "{}"
+	}
+	if _, ok := o.([]any); ok {
+		return "[]"
+	}
+	return ""
+}
+
+// getInitialKV is a utility function that gets the initial list of key-value pairs
+// given an any
+func getInitialKV(o any) []KVPair {
+	kvpairs := []KVPair{}
+	m := getKAny(o)
+	if m != nil {
+		for key, val := range m {
+			kvp := KVPair{
+				Key:   key,
+				Value: getVal(val),
+			}
+			kvpairs = append(kvpairs, kvp)
+		}
+	}
+	return kvpairs
+}
+
 // NewModel gets the initial model
 func NewModel() *Model {
 	// we will read the JSON from Stdin
@@ -65,18 +117,7 @@ func NewModel() *Model {
 	if err != nil {
 		return nil
 	}
-	kvpairs := []KVPair{}
-	for key, val := range data {
-		kvp := KVPair{Key: key}
-		if valstr, ok := val.(string); ok {
-			kvp.Value = valstr
-		} else if _, ok := val.([]any); ok {
-			kvp.Value = "[]"
-		} else {
-			kvp.Value = "{}"
-		}
-		kvpairs = append(kvpairs, kvp)
-	}
+	kvpairs := getInitialKV(data)
 	// if there are no key-value pairs there is nothing to do
 	if len(kvpairs) == 0 {
 		return nil
@@ -91,7 +132,7 @@ func NewModel() *Model {
 		Data:   data,
 		CurrC:  c,
 		CurrKV: kvpairs,
-		Path:   []string{},
+		Path:   []string{}, // path is empty in the beginning
 	}
 }
 
@@ -182,34 +223,20 @@ func (m *Model) updateKV() {
 	m.CurrKV = nil
 	// if there is nothing in the path just fill the first set of key-value pairs
 	if len(m.Path) == 0 {
-		for key, val := range m.Data {
-			kvp := KVPair{Key: key}
-			if valstr, ok := val.(string); ok {
-				kvp.Value = valstr
-			} else if _, ok := val.([]any); ok {
-				kvp.Value = "[]"
-			} else {
-				kvp.Value = "{}"
-			}
-			m.CurrKV = append(m.CurrKV, kvp)
-		}
+		m.CurrKV = getInitialKV(m.Data)
 	} else {
 		// iterate through the Path to get the final key-pair
-		tempMap, _ := m.Data[m.Path[0]].(map[string]any)
-		for i := 1; i < len(m.Path)-1; i++ {
-			tempMap, _ = tempMap[m.Path[i]].(map[string]any)
+		tempMap := getKAny(m.Data)
+		if tempMap != nil {
+			for _, k := range m.Path {
+				o := tempMap[k]      // gets an any object
+				tempMap = getKAny(o) // converts it into a map of string and any
 
-		}
-		for key, val := range tempMap {
-			kvp := KVPair{Key: key}
-			if valstr, ok := val.(string); ok {
-				kvp.Value = valstr
-			} else if _, ok := val.([]any); ok {
-				kvp.Value = "[]"
-			} else {
-				kvp.Value = "{}"
 			}
-			m.CurrKV = append(m.CurrKV, kvp)
+			// we now have a key-value pair which we can fill out
+			for k, v := range tempMap {
+				m.CurrKV = append(m.CurrKV, KVPair{Key: k, Value: getVal(v)})
+			}
 		}
 	}
 }
