@@ -84,6 +84,9 @@ func getVal(o any) string {
 	if valflt, ok := o.(float64); ok {
 		return fmt.Sprintf("%f", valflt)
 	}
+	if valbool, ok := o.(bool); ok {
+		return fmt.Sprintf("%t", valbool)
+	}
 	if _, ok := o.(map[string]any); ok {
 		return "{}"
 	}
