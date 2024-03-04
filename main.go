@@ -9,8 +9,11 @@ import (
 
 func main() {
 
-	err := tea.NewProgram(NewModel()).Start()
-	if err != nil {
+	p := tea.NewProgram(NewModel(),
+		tea.WithAltScreen(),       // opens up a new terminal screen
+		tea.WithMouseCellMotion()) // takes mouse input
+
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
