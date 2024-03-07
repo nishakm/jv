@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/paginator"
+	page "github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -22,10 +24,11 @@ type Cursor struct {
 
 // Model contains the data and its visual representation
 type Model struct {
-	Data   any      // contains the parsed JSON data
-	CurrC  Cursor   // the cursor position
-	CurrKV []KVPair // current list of key-value pairs
-	Path   []string // current path location
+	Data   any        // contains the parsed JSON data
+	CurrC  Cursor     // the cursor position
+	CurrKV []KVPair   // current list of key-value pairs
+	Path   []string   // current path location
+	Page   page.Model // paginator
 }
 
 // NewModel gets the initial model
@@ -46,11 +49,15 @@ func NewModel() *Model {
 		IsEnd:         false, // this is the very start of the path
 		CursorDisplay: "→",   // we go right
 	}
+	p := paginator.New()
+	p.PerPage = 10
+	p.SetTotalPages(len(kvpairs))
 	return &Model{
 		Data:   data,
 		CurrC:  c,
 		CurrKV: kvpairs,
 		Path:   []string{}, // path is empty in the beginning
+		Page:   p,
 	}
 }
 
@@ -61,6 +68,7 @@ func (m *Model) Init() tea.Cmd {
 
 // Update updates the model based on tea.KeyMsg
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -117,6 +125,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.CurrC.IsEnd = false
 				m.CurrC.CursorDisplay = "→"
 				m.updateKV()
+				m.Page.SetTotalPages(len(m.CurrKV))
 			}
 		// x goes back one key and reloads the previous key-value pairs
 		case "x":
@@ -130,9 +139,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.CurrC.IsEnd = false
 			m.CurrC.CursorDisplay = "→"
 			m.updateKV()
+			m.Page.SetTotalPages(len(m.CurrKV))
 		}
 	}
-	return m, nil
+	m.Page, cmd = m.Page.Update(msg)
+	return m, cmd
 }
 
 // updateKV updates the model's list of key-value pairs
@@ -159,6 +170,23 @@ func (m *Model) updateKV() {
 	}
 }
 
+// getPageItems is a utility function that returns the list of key-value pairs in string form
+func (m *Model) getPageItems() []string {
+	items := []string{}
+	for index, kv := range m.CurrKV {
+		if m.CurrC.RowNo == index {
+			if m.CurrC.IsKey {
+				items = append(items, fmt.Sprintf("%s %s: %s", m.CurrC.CursorDisplay, kv.Key, kv.Value))
+			} else {
+				items = append(items, fmt.Sprintf("%s: %s %s", kv.Key, m.CurrC.CursorDisplay, kv.Value))
+			}
+		} else {
+			items = append(items, fmt.Sprintf("%s: %s", kv.Key, kv.Value))
+		}
+	}
+	return items
+}
+
 func (m *Model) View() string {
 	s := "You are here: "
 	if len(m.Path) > 0 {
@@ -166,18 +194,13 @@ func (m *Model) View() string {
 			s += fmt.Sprintf("%s: ", p)
 		}
 	}
-	s += fmt.Sprintf("\n\n")
-	for index, kv := range m.CurrKV {
-		if m.CurrC.RowNo == index {
-			if m.CurrC.IsKey {
-				s += fmt.Sprintf("%s %s: %s\n", m.CurrC.CursorDisplay, kv.Key, kv.Value)
-			} else {
-				s += fmt.Sprintf("%s: %s %s\n", kv.Key, m.CurrC.CursorDisplay, kv.Value)
-			}
-		} else {
-			s += fmt.Sprintf("%s: %s\n", kv.Key, kv.Value)
-		}
+	items := m.getPageItems()
+	start, end := m.Page.GetSliceBounds(len(items))
+	for _, item := range items[start:end] {
+		s += fmt.Sprintf("%s\n", item)
 	}
-	s += "\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
+
+	s += m.Page.View()
+	s += "\n\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
 	return s
 }
