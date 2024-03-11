@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/paginator"
 	page "github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -49,8 +48,10 @@ func NewModel() *Model {
 		IsEnd:         false, // this is the very start of the path
 		CursorDisplay: "→",   // we go right
 	}
-	p := paginator.New()
-	p.PerPage = 10
+	p := page.New()
+	// unbind the default key bindings of the paginator
+	p.KeyMap.PrevPage.Unbind()
+	p.KeyMap.NextPage.Unbind()
 	p.SetTotalPages(len(kvpairs))
 	return &Model{
 		Data:   data,
@@ -70,6 +71,8 @@ func (m *Model) Init() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Page.PerPage = msg.Height - 5
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -194,12 +197,18 @@ func (m *Model) View() string {
 			s += fmt.Sprintf("%s: ", p)
 		}
 	}
+	s += "\n\n"
 	items := m.getPageItems()
 	start, end := m.Page.GetSliceBounds(len(items))
+	if m.CurrC.RowNo < start {
+		m.Page.PrevPage()
+	}
+	if m.CurrC.RowNo > end {
+		m.Page.NextPage()
+	}
 	for _, item := range items[start:end] {
 		s += fmt.Sprintf("%s\n", item)
 	}
-
 	s += m.Page.View()
 	s += "\n\nQuit: ctrl+c  Up: ↑  Down: ↓  Left: ←  Right: →  Expand: enter  Back: x \n"
 	return s
